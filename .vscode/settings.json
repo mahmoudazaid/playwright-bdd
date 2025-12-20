@@ -1,0 +1,13 @@
+{
+    "cucumber.features": [
+      "features/**/*.feature"
+    ],
+    "cucumber.glue": [
+      "src/step_definitions/**/*.ts",
+      "src/support/**/*.ts"
+    ],
+    "cucumber.command": "npx cucumber-js -c cucumber.js",
+    "cucumber.options": "",
+    "cucumberTestExplorer.debug": false
+  }
+  
