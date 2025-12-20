@@ -8,6 +8,7 @@ A maintainable BDD test framework using Playwright and Cucumber for web applicat
 - **TypeScript**
 - **Playwright** - Browser automation
 - **Cucumber.js** - BDD framework
+- **VS Code** (recommended) - Code editor with Cucumber extensions
 
 ## Quick Start
 
@@ -23,6 +24,10 @@ npx playwright install
 # Create .env file (optional)
 cp .env.example .env
 ```
+
+**VS Code Extensions** (recommended):
+- Install **Cucumber (Gherkin) Full Support** extension (`alexkrechik.cucumberautocomplete`)
+- Optional: Install **Playwright Test for VSCode** extension
 
 ### Running Tests
 
@@ -41,6 +46,92 @@ npm run report
 # Or just generate report (auto-opens in browser)
 npm run report:open
 ```
+
+## VS Code Setup
+
+### Required Extensions
+
+Install the following VS Code extensions for optimal Cucumber/Gherkin support:
+
+1. **Cucumber (Gherkin) Full Support** (`alexkrechik.cucumberautocomplete`)
+   - Provides syntax highlighting, autocomplete, and step definition navigation
+   - Install: Open VS Code → Extensions → Search "Cucumber (Gherkin) Full Support"
+
+2. **Cucumber** (`cucumber.cucumber`) - Optional alternative
+   - Official Cucumber extension
+   - Alternative to the above if preferred
+
+3. **Playwright Test for VSCode** (`ms-playwright.playwright`) - Optional
+   - Enhanced Playwright support and debugging
+   - Install: Open VS Code → Extensions → Search "Playwright Test"
+
+### Configuration Files
+
+To enable running and debugging tests directly from VS Code, create the following configuration files:
+
+### Create `.vscode/launch.json`
+
+Create `.vscode/launch.json` in the project root to enable running tests with tags:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run Tests",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "cucumber-js",
+        "-c",
+        "cucumber.js",
+        "--tags",
+        "${input:tagName}"
+      ],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "tagName",
+      "type": "promptString",
+      "description": "Enter tag (e.g., @smoke, @regression, or leave empty for all)",
+      "default": ""
+    }
+  ]
+}
+```
+
+**Usage**: Press `F5` or use the Debug panel → Select "Run Tests" → Enter tag (or leave empty for all tests)
+
+### Create `.vscode/settings.json`
+
+Create `.vscode/settings.json` in the project root to enable Cucumber/Gherkin support:
+
+```json
+{
+  "cucumber.features": [
+    "features/**/*.feature"
+  ],
+  "cucumber.glue": [
+    "src/step_definitions/**/*.ts",
+    "src/support/**/*.ts"
+  ],
+  "cucumber.command": "npx cucumber-js -c cucumber.js",
+  "cucumber.options": "",
+  "cucumberTestExplorer.debug": false
+}
+```
+
+**What this enables**:
+- Syntax highlighting for `.feature` files
+- CodeLens (play buttons) on feature files
+- Step definition navigation
+- Cucumber extension integration
 
 ## Framework Architecture
 
@@ -61,7 +152,11 @@ playwright-bdd/
 │   │   └── env.ts                  # Environment configuration
 │   └── utils/
 │       ├── browser.ts              # Browser configuration helper
-│       └── cookies.ts             # Cookie consent handler
+│       ├── cookies.ts              # Cookie consent handler
+│       └── generate-report.ts      # HTML report generator
+├── .vscode/                        # VS Code configuration
+│   ├── launch.json                 # Debug/run configurations
+│   └── settings.json               # Cucumber/Gherkin settings
 ├── .env                            # Environment variables
 ├── cucumber.js                     # Cucumber configuration
 └── playwright.config.ts            # Playwright configuration
