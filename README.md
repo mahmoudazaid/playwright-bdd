@@ -241,6 +241,84 @@ Page Objects (performs actions)
 Playwright (interacts with browser)
 ```
 
+## Adding New Tests
+
+To add new tests to the framework, follow this structured approach:
+
+### 1. Create Feature File
+
+Create a new `.feature` file in `features/` directory with Gherkin scenarios:
+
+```gherkin
+Feature: My new feature
+  @smoke
+  Scenario: Test scenario description
+    Given I am on the page
+    When I perform an action
+    Then I should see expected result
+```
+
+### 2. Create Page Object (if needed)
+
+Add a new Page Object in `src/pages/` for page-specific interactions:
+
+```typescript
+import { Page, Locator } from '@playwright/test';
+
+export class MyPage {
+  constructor(private page: Page) {}
+  
+  get myElement(): Locator {
+    return this.page.getByRole('button', { name: 'Click me' });
+  }
+  
+  async performAction(): Promise<void> {
+    await this.myElement.click();
+  }
+}
+```
+
+### 3. Create Step Definitions
+
+Add or update step definitions in `src/step_definitions/`:
+
+```typescript
+import { Given, When, Then } from '@cucumber/cucumber';
+import { CustomWorld } from '../support/world';
+import { MyPage } from '../pages/MyPage';
+
+let myPage: MyPage;
+
+Given('I am on the page', async function (this: CustomWorld) {
+  myPage = new MyPage(this.page);
+  // Additional setup if needed
+});
+
+When('I perform an action', async function (this: CustomWorld) {
+  await myPage.performAction();
+});
+
+Then('I should see expected result', async function (this: CustomWorld) {
+  // Assertions using expect from @playwright/test
+});
+```
+
+### Framework Structure for New Tests
+
+- **One feature file per feature/functionality** (`features/my-feature.feature`)
+- **One Page Object per page/section** (`src/pages/MyPage.ts`)
+- **One step definitions file per feature** (`src/step_definitions/my-feature.steps.ts`)
+- **Reuse existing support files** (world.ts, hooks.ts) - no changes needed
+- **Use tags** (@smoke, @regression) to organize and filter tests
+
+### Best Practices for New Tests
+
+1. **Reuse Page Objects** - Don't duplicate locators/actions across pages
+2. **Keep steps generic** - Step definitions should delegate to Page Objects
+3. **Use descriptive Gherkin** - Write clear, business-readable scenarios
+4. **Tag appropriately** - Use tags to categorize tests (@smoke, @regression, @e2e)
+5. **Follow selector strategy** - Prefer `getByRole()`, `getByLabel()` over CSS/XPath
+
 ## Configuration
 
 ### Environment Variables (`.env`)
