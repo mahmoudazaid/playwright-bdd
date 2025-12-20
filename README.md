@@ -25,7 +25,7 @@ npx playwright install
 cp .env.example .env
 ```
 
-**VS Code Extensions** (recommended):
+**VS Code Extensions** (optional, but recommended for better development experience):
 - Install **Cucumber (Gherkin) Full Support** extension (`alexkrechik.cucumberautocomplete`)
 - Optional: Install **Playwright Test for VSCode** extension
 
@@ -47,9 +47,11 @@ npm run report
 npm run report:open
 ```
 
-## VS Code Setup
+## VS Code Setup (Optional)
 
-### Required Extensions
+VS Code configuration is **optional but recommended** for a better development experience. Tests can be run from the command line without these configurations.
+
+### Recommended Extensions
 
 Install the following VS Code extensions for optimal Cucumber/Gherkin support:
 
@@ -65,9 +67,9 @@ Install the following VS Code extensions for optimal Cucumber/Gherkin support:
    - Enhanced Playwright support and debugging
    - Install: Open VS Code → Extensions → Search "Playwright Test"
 
-### Configuration Files
+### Configuration Files (Nice to Have)
 
-To enable running and debugging tests directly from VS Code, create the following configuration files:
+To enable running and debugging tests directly from VS Code, optionally create the following configuration files:
 
 ### Create `.vscode/launch.json`
 
@@ -127,11 +129,13 @@ Create `.vscode/settings.json` in the project root to enable Cucumber/Gherkin su
 }
 ```
 
-**What this enables**:
+**What this enables** (all optional features):
 - Syntax highlighting for `.feature` files
 - CodeLens (play buttons) on feature files
 - Step definition navigation
 - Cucumber extension integration
+
+**Note**: These configuration files are optional. You can run tests from the command line using `npm run test:bdd` without any VS Code setup.
 
 ## Framework Architecture
 
