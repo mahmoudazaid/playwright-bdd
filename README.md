@@ -2,6 +2,8 @@
 
 A maintainable BDD test framework using Playwright and Cucumber for web application testing.
 
+The sample scenarios target **[Sauce Demo (Swag Labs)](https://www.saucedemo.com/)** — a demo e-commerce site used for learning automation. Point `BASE_URL` at your own app when you add real tests.
+
 ## Tech Stack
 
 - **Node.js** 18+
@@ -144,12 +146,14 @@ Create `.vscode/settings.json` in the project root to enable Cucumber/Gherkin su
 ```
 playwright-bdd/
 ├── features/
-│   └── search.feature              # Gherkin feature files (BDD scenarios)
+│   └── login.feature               # Gherkin feature files (BDD scenarios)
 ├── src/
+│   ├── locators/
+│   │   └── LoginLocators.ts        # Selectors only (no actions)
 │   ├── pages/
-│   │   └── SearchPage.ts           # Page Object Model (locators + actions)
+│   │   └── LoginPage.ts            # Page Object Model (actions; uses locators)
 │   ├── step_definitions/
-│   │   └── search.steps.ts         # Step definitions (Gherkin → code)
+│   │   └── login.steps.ts          # Step definitions (Gherkin → code)
 │   ├── support/
 │   │   ├── world.ts                # CustomWorld (browser/page management)
 │   │   ├── hooks.ts                # Before/After hooks (setup/teardown)
@@ -173,12 +177,12 @@ playwright-bdd/
 - Business-readable test scenarios
 - Example:
 ```gherkin
-Feature: Search functionality
-  @smoke
-  Scenario: Search for location
-    Given I open the Search & Map page
-    When I search for "Berlin"
-    Then I should see results loaded
+Feature: Login
+  @smoke @test
+  Scenario: Successful login with standard user
+    Given I am on the login page
+    When I log in as "standard_user" with password "secret_sauce"
+    Then I should land on the inventory page
 ```
 
 #### 2. **Step Definitions** (`src/step_definitions/`)
@@ -186,30 +190,49 @@ Feature: Search functionality
 - Thin layer that delegates to Page Objects
 - Example:
 ```typescript
-When('I search for {string}', async function (this: CustomWorld, location: string) {
-  await searchPage.searchForLocation(location);
-});
+import { When } from '@cucumber/cucumber';
+import { CustomWorld } from '../support/world';
+import { LoginPage } from '../pages/LoginPage';
+
+let loginPage: LoginPage;
+
+When(
+  'I log in as {string} with password {string}',
+  async function (this: CustomWorld, username: string, password: string) {
+    loginPage = new LoginPage(this.page);
+    await loginPage.login(username, password);
+  }
+);
 ```
 
-#### 3. **Page Objects** (`src/pages/`)
-- Encapsulates page-specific logic
-- Contains locators (getters) and actions (methods)
-- Follows Page Object Model pattern
+#### 3. **Locators** (`src/locators/`)
+- Selector definitions only (`Locator` getters); no clicks, fills, or assertions
+- Keeps selectors in one place so page objects stay focused on behavior
+
+#### 4. **Page Objects** (`src/pages/`)
+- Encapsulates page-specific actions and flows
+- Composes locators from `src/locators/` and implements methods the steps call
 - Example:
 ```typescript
-export class SearchPage {
-  get searchInputLocator(): Locator {
-    return this.page.locator('input[type="search"]');
+import { Page } from '@playwright/test';
+import { LoginLocators } from '../locators/LoginLocators';
+
+export class LoginPage {
+  private readonly locators: LoginLocators;
+
+  constructor(page: Page) {
+    this.locators = new LoginLocators(page);
   }
-  
-  async searchForLocation(location: string): Promise<void> {
-    await this.searchInputLocator.fill(location);
-    await this.searchInputLocator.press('Enter');
+
+  async login(username: string, password: string): Promise<void> {
+    await this.locators.usernameInput.fill(username);
+    await this.locators.passwordInput.fill(password);
+    await this.locators.loginButton.click();
   }
 }
 ```
 
-#### 4. **World & Hooks** (`src/support/`)
+#### 5. **World & Hooks** (`src/support/`)
 - **World** (`world.ts`): Custom Cucumber World with browser/page context
 - **Hooks** (`hooks.ts`): Setup (Before) and teardown (After) logic
   - Browser initialization
@@ -217,7 +240,7 @@ export class SearchPage {
   - Cookie acceptance
   - Screenshots on failure
 
-#### 5. **Utilities** (`src/utils/`)
+#### 6. **Utilities** (`src/utils/`)
 - **browser.ts**: Browser configuration and context creation
 - **cookies.ts**: Automatic cookie consent handling
 
@@ -225,7 +248,7 @@ export class SearchPage {
 
 1. **Feature File** defines test scenario in plain English
 2. **Step Definitions** map Gherkin steps to code
-3. **Page Objects** contain reusable page interactions
+3. **Locators** define selectors; **Page Objects** contain reusable interactions
 4. **Hooks** handle setup/teardown (browser, navigation, cookies)
 5. **World** provides shared context (page, browser) to all steps
 
@@ -236,7 +259,7 @@ Feature File (Gherkin)
     ↓
 Step Definitions (maps steps to code)
     ↓
-Page Objects (performs actions)
+Page Objects (actions via locators)
     ↓
 Playwright (interacts with browser)
 ```
@@ -258,27 +281,44 @@ Feature: My new feature
     Then I should see expected result
 ```
 
-### 2. Create Page Object (if needed)
+### 2. Create Locators (if needed)
 
-Add a new Page Object in `src/pages/` for page-specific interactions:
+Add a locator class in `src/locators/` for selectors only:
 
 ```typescript
-import { Page, Locator } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 
-export class MyPage {
-  constructor(private page: Page) {}
-  
-  get myElement(): Locator {
-    return this.page.getByRole('button', { name: 'Click me' });
-  }
-  
-  async performAction(): Promise<void> {
-    await this.myElement.click();
+export class MyLocators {
+  constructor(private readonly page: Page) {}
+
+  get submitButton(): Locator {
+    return this.page.getByRole('button', { name: 'Submit' });
   }
 }
 ```
 
-### 3. Create Step Definitions
+### 3. Create Page Object (if needed)
+
+Add a Page Object in `src/pages/` that uses your locators and implements actions:
+
+```typescript
+import { Page } from '@playwright/test';
+import { MyLocators } from '../locators/MyLocators';
+
+export class MyPage {
+  private readonly locators: MyLocators;
+
+  constructor(page: Page) {
+    this.locators = new MyLocators(page);
+  }
+
+  async performAction(): Promise<void> {
+    await this.locators.submitButton.click();
+  }
+}
+```
+
+### 4. Create Step Definitions
 
 Add or update step definitions in `src/step_definitions/`:
 
@@ -306,6 +346,7 @@ Then('I should see expected result', async function (this: CustomWorld) {
 ### Framework Structure for New Tests
 
 - **One feature file per feature/functionality** (`features/my-feature.feature`)
+- **One locator file per page/screen** (`src/locators/MyLocators.ts`) when you want selectors separated
 - **One Page Object per page/section** (`src/pages/MyPage.ts`)
 - **One step definitions file per feature** (`src/step_definitions/my-feature.steps.ts`)
 - **Reuse existing support files** (world.ts, hooks.ts) - no changes needed
@@ -313,7 +354,7 @@ Then('I should see expected result', async function (this: CustomWorld) {
 
 ### Best Practices for New Tests
 
-1. **Reuse Page Objects** - Don't duplicate locators/actions across pages
+1. **Reuse locators and page objects** - Do not duplicate selectors or flows across files
 2. **Keep steps generic** - Step definitions should delegate to Page Objects
 3. **Use descriptive Gherkin** - Write clear, business-readable scenarios
 4. **Tag appropriately** - Use tags to categorize tests (@smoke, @regression, @e2e)
@@ -324,20 +365,23 @@ Then('I should see expected result', async function (this: CustomWorld) {
 ### Environment Variables (`.env`)
 
 ```bash
-BASE_URL=https://gruppenplatz.healthycloud.de/HC_GP_Public_Pages/
+# Default sample app (Sauce Demo). Override for your own environment.
+BASE_URL=https://www.saucedemo.com/
 BROWSER=chrome          # chrome, firefox, safari
 HEADED=false            # true to see browser
 VIEWPORT_WIDTH=1920
 VIEWPORT_HEIGHT=1080
 ```
 
+`BASE_URL` is read from `.env` (and from VS Code `launch.json` via `envFile`). It overrides the fallback in `playwright.config.ts`. If tests open the wrong site, check **`.env`** first.
+
 ### Key Design Decisions
 
-1. **Page Object Model**: Locators and actions together in one class
-2. **Selector Strategy**: Prefer `getByRole()`, `getByLabel()` over XPath/CSS
-3. **Automatic Setup**: Browser initialization and navigation in Before hook
-4. **Cookie Handling**: Automatic cookie consent in hooks
-5. **Environment-Based Config**: All settings via `.env` file
+1. **Page Object Model**: Locators live under `src/locators/`; page objects under `src/pages/` orchestrate behavior
+2. **Selector Strategy**: Prefer `getByRole()`, `getByLabel()`, or stable `data-test` attributes where the app provides them
+3. **Automatic Setup**: Browser initialization and navigation to `BASE_URL` in the Before hook
+4. **Cookie Handling**: Automatic cookie consent in hooks (useful for sites with consent banners)
+5. **Environment-Based Config**: Browser, URL, and viewport come from `.env` (see `.env.example`)
 
 ## Test Reports
 
@@ -361,7 +405,7 @@ This will:
 
 ## Best Practices
 
-1. ✅ **Page Objects** - Centralize locators and actions
+1. ✅ **Locators + Page Objects** - Centralize selectors in `src/locators/`, actions in `src/pages/`
 2. ✅ **Resilient Selectors** - Use role/label over CSS/XPath
 3. ✅ **Thin Step Definitions** - Delegate logic to Page Objects
 4. ✅ **Reusable Hooks** - Setup/teardown in hooks, not steps

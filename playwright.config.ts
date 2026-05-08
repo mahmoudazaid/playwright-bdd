@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 
-const baseURL = process.env.BASE_URL || 'https://gruppenplatz.healthycloud.de/HC_GP_Public_Pages/';
+const baseURL = process.env.BASE_URL || 'https://www.saucedemo.com/';
 
 export default defineConfig({
   testDir: './features',
