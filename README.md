@@ -269,6 +269,60 @@ Exports `attachSelfHealToReport(attach, page, failureMessage)`. Intended from **
 **`generate-report.ts`**  
 Script run by **`npm run report`** (after `reporting/patch-mchr-scenarios.cjs`). Waits until Cucumber JSON exists (poll under **`CUCUMBER_HTML_REPORT_WAIT_MS`**, default **1500ms** when invoked manually), normalizes **`test-results/cucumber/cucumber-report.json`** (including legacy **`test-results/cucumber-report.json`** or cwd variants), then calls **multiple-cucumber-html-reporter** with `jsonDir: test-results/cucumber` so trace `*.json` files under `test-results/` are not scanned. Writes **`test-results/cucumber-html-report/`**. See **Test Reports** for auto-generation after runs.
 
+##### How heal-on-failure works (step-by-step)
+
+Healing is **diagnostic and report-oriented**: it does **not** change your locators or retry the step automatically. It suggests a candidate element (for example a healed XPath) so you can fix selectors or investigate flakiness.
+
+```mermaid
+flowchart TD
+  A[Cucumber step: Playwright throws] --> B[Step status FAILED]
+  B --> C["AfterStep hook (hooks.ts)"]
+  C --> D["Try: attach full-page screenshot"]
+  D --> E["attachSelfHealToReport(attach, page, message)"]
+  E --> F{"HEAL_ON_FAILURE == false?"}
+  F -->|Yes| G["Attach JSON: skipped, reason disabled"]
+  F -->|No| H["extractLocatorFromPlaywrightError(message)"]
+  H --> I{"Locator string found?"}
+  I -->|No| J["Attach JSON: skipped, reason no_locator_in_message"]
+  I -->|Yes| K{"Browser page available?"}
+  K -->|No| L["Attach JSON: skipped, reason no_page"]
+  K -->|Yes| M["SelfHealingClient.healFromPage"]
+  M --> N["page.content → gzip → base64"]
+  N --> O["POST /api/v1/heal-locator on HEAL_API_URL"]
+  O --> P{"Parse OK and status success?"}
+  P -->|Yes| Q["Attach JSON: failedLocator + heal + healed_element"]
+  P -->|No| R["Attach JSON: failedLocator + healError"]
+  G --> S["Hook ends; step stays FAILED"]
+  J --> S
+  L --> S
+  Q --> S
+  R --> S
+```
+
+1. **A step fails** (Playwright throws; Cucumber marks the step `FAILED` and stores the failure text in `result.message`).
+
+2. **`AfterStep`** in `hooks.ts` runs only for that failed step. It first attaches a **full-page screenshot** (`step-failure-screenshot.png`) when a `page` exists.
+
+3. **`attachSelfHealToReport`** runs next:
+   - If **`HEAL_ON_FAILURE`** is **`false`**, it attaches a small JSON body `{ "skipped": true, "reason": "disabled" }` and stops.
+   - Otherwise it calls **`extractLocatorFromPlaywrightError(result.message)`**. If no Playwright-style `locator(...)` fragment is found, it attaches `{ "skipped": true, "reason": "no_locator_in_message", ... }` and stops.
+   - If there is no **`page`**, it attaches `{ "skipped": true, "reason": "no_page", "failedLocator": "..." }` and stops.
+
+4. **`SelfHealingClient`** (when a locator and page are available):
+   - Reads the current DOM with **`page.content()`**.
+   - **Gzips** that HTML and sends it **base64-encoded** in a **`POST`** to **`{HEAL_API_URL}/api/v1/heal-locator`** together with the failed selector string and **`HEAL_THRESHOLD`** (default `0.4`).
+   - Parses the JSON response with **`parseHealLocatorResponse`**. A successful response includes **`healed_element`** (tag, id, classes, **`healed_xpath`**, score, etc.).
+
+5. **Attachment to the Cucumber report**: whatever happened is serialized as **JSON** and passed to Cucumber’s **`attach(..., 'application/json')`**. Typical shapes:
+   - **Success**: `{ "failedLocator": "...", "heal": { "status": "success", "healed_element": { ... } } }`
+   - **API or parse error**: `{ "failedLocator": "...", "healError": "message..." }`
+   - **Skipped paths**: `{ "skipped": true, "reason": "..." }`  
+   Errors inside this path are caught so a broken heal service **never hides** the original step failure.
+
+6. **HTML report**: regenerate with **`npm run report`** (or rely on the post-run hook). On the failed step row, open **+ Show Info** to inspect the self-heal JSON; use **+ Show Error** for the Playwright stack trace; **+ Screenshot** for the capture. The heal output is a **hint**—update **`src/locators/`** (or similar) yourself if you adopt a new selector.
+
+**Operational checklist**: run a service that implements **`POST /api/v1/heal-locator`** (same contract as `SelfHealingClient`), set **`HEAL_API_URL`** if it is not on `localhost:8787`, and keep **`HEAL_ON_FAILURE=true`** unless you want to turn attachments off.
+
 ## How It Works
 
 1. **Feature File** defines test scenario in plain English
