@@ -1,18 +1,109 @@
 const report = require('multiple-cucumber-html-reporter');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
-const jsonReportPath = path.join(__dirname, '../../test-results/cucumber-report.json');
+// Cucumber JSON must live in its own folder: multiple-cucumber-html-reporter scans every
+// `*.json` under jsonDir, and Playwright trace zips contain other JSON files that are not arrays.
+const projectRoot = path.join(__dirname, '../..');
+const testResultsDir = path.join(projectRoot, 'test-results');
+const cucumberJsonDir = path.join(testResultsDir, 'cucumber');
+const jsonReportPath = path.join(cucumberJsonDir, 'cucumber-report.json');
+const legacyReportPath = path.join(testResultsDir, 'cucumber-report.json');
+const cwdTestResults = path.join(process.cwd(), 'test-results');
+const altJsonReportPath = path.join(cwdTestResults, 'cucumber', 'cucumber-report.json');
+const altLegacyReportPath = path.join(cwdTestResults, 'cucumber-report.json');
 
-if (!fs.existsSync(jsonReportPath)) {
+const waitMs = Number(process.env.CUCUMBER_HTML_REPORT_WAIT_MS) || 1500;
+const pollMs = 200;
+
+function sleepMs(ms: number): void {
+  if (ms <= 0) return;
+  try {
+    if (process.platform === 'win32') {
+      execSync(`powershell -NoProfile -NonInteractive -Command "Start-Sleep -Milliseconds ${ms}"`, {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } else {
+      execSync(`sleep ${ms / 1000}`, { stdio: 'ignore' });
+    }
+  } catch {
+    const until = Date.now() + ms;
+    while (Date.now() < until) {
+      /* fallback */
+    }
+  }
+}
+
+function jsonFileReady(filePath: string): boolean {
+  try {
+    return fs.existsSync(filePath) && fs.statSync(filePath).size >= 2;
+  } catch {
+    return false;
+  }
+}
+
+function syncJsonIntoCanonical(sourcePath: string): void {
+  fs.mkdirSync(cucumberJsonDir, { recursive: true });
+  fs.copyFileSync(sourcePath, jsonReportPath);
+}
+
+/** Waits for Cucumber to finish writing JSON (VS Code / beforeExit can run the report slightly early). */
+function waitForCucumberJson(): boolean {
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    if (jsonFileReady(jsonReportPath)) {
+      return true;
+    }
+    if (jsonFileReady(legacyReportPath)) {
+      return true;
+    }
+    if (jsonFileReady(altJsonReportPath)) {
+      return true;
+    }
+    if (jsonFileReady(altLegacyReportPath)) {
+      return true;
+    }
+    sleepMs(pollMs);
+  }
+  return (
+    jsonFileReady(jsonReportPath) ||
+    jsonFileReady(legacyReportPath) ||
+    jsonFileReady(altJsonReportPath) ||
+    jsonFileReady(altLegacyReportPath)
+  );
+}
+
+if (!waitForCucumberJson()) {
   console.error('✗ No test report found. Please run tests first: npm run test:bdd');
   process.exit(1);
 }
 
+if (!jsonFileReady(jsonReportPath)) {
+  if (jsonFileReady(altJsonReportPath)) {
+    syncJsonIntoCanonical(altJsonReportPath);
+  } else if (jsonFileReady(legacyReportPath)) {
+    fs.mkdirSync(cucumberJsonDir, { recursive: true });
+    fs.copyFileSync(legacyReportPath, jsonReportPath);
+    console.log(
+      'Note: found test-results/cucumber-report.json; copied to test-results/cucumber/ for report generation.',
+    );
+  } else if (jsonFileReady(altLegacyReportPath)) {
+    syncJsonIntoCanonical(altLegacyReportPath);
+    console.log(
+      'Note: found test-results/cucumber-report.json (cwd); copied to test-results/cucumber/ for report generation.',
+    );
+  } else {
+    console.error('✗ Cucumber JSON disappeared after wait; run tests again or run: npm run report');
+    process.exit(1);
+  }
+}
+
 const reportGeneration = {
-  jsonDir: path.join(__dirname, '../../test-results'),
-  reportPath: path.join(__dirname, '../../test-results/cucumber-html-report'),
-  openReportInBrowser: true,
+  jsonDir: cucumberJsonDir,
+  reportPath: path.join(testResultsDir, 'cucumber-html-report'),
+  openReportInBrowser: false,
   disableLog: true,
   pageTitle: 'Playwright + Cucumber BDD Test Report',
   reportName: 'Test Execution Report',
@@ -38,4 +129,3 @@ try {
   console.error('✗ Failed to generate report:', error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
-

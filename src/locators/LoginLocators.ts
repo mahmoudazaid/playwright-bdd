@@ -15,6 +15,6 @@ export class LoginLocators {
   }
 
   get loginButton(): Locator {
-    return this.page.locator('[data-test="login-button"]');
+    return this.page.locator('//input[@id="signin-button"]');
   }
 }

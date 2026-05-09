@@ -17,7 +17,7 @@ module.exports = {
     ],
     format: [
       '@cucumber/pretty-formatter',
-      'json:test-results/cucumber-report.json',
+      'json:test-results/cucumber/cucumber-report.json',
       'rerun:@rerun.txt',
     ],
     formatOptions: {

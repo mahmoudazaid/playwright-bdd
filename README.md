@@ -34,18 +34,21 @@ cp .env.example .env
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (HTML report is generated automatically when the run finishes)
 npm run test:bdd
 
-# Run smoke tests only
+# Run smoke tests only (report also generated afterward)
 npm run test:bdd:smoke
 
-# Run tests in headed mode (see browser)
+# Run tests in headed mode (see browser; report generated afterward)
 npm run test:bdd:headed
 
-# Generate and open HTML report
+# Cucumber only, skip HTML report (sets SKIP_AUTO_HTML_REPORT=1; faster iteration)
+npm run test:bdd:no-report
+
+# Regenerate report from the last JSON without re-running tests
 npm run report
-# Or just generate report (auto-opens in browser)
+# Or generate and open the HTML file in the browser
 npm run report:open
 ```
 
@@ -94,6 +97,7 @@ Create `.vscode/launch.json` in the project root to enable running tests with ta
         "${input:tagName}"
       ],
       "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
       "internalConsoleOptions": "neverOpen",
       "skipFiles": ["<node_internals>/**"],
       "envFile": "${workspaceFolder}/.env"
@@ -110,7 +114,7 @@ Create `.vscode/launch.json` in the project root to enable running tests with ta
 }
 ```
 
-**Usage**: Press `F5` or use the Debug panel → Select "Run Tests" → Enter tag (or leave empty for all tests)
+**Usage**: Press `F5` or use the Debug panel → Select "Run Tests" → Enter tag (or leave empty for all tests). The HTML report is still generated when the debug session ends (same `beforeExit` hook as CLI). To skip that, add `"SKIP_AUTO_HTML_REPORT": "1"` under `env` in the launch configuration.
 
 ### Create `.vscode/settings.json`
 
@@ -159,14 +163,19 @@ playwright-bdd/
 │   │   ├── hooks.ts                # Before/After hooks (setup/teardown)
 │   │   └── env.ts                  # Environment configuration
 │   └── utils/
-│       ├── browser.ts              # Browser configuration helper
-│       ├── cookies.ts              # Cookie consent handler
-│       └── generate-report.ts      # HTML report generator
+│       ├── browser.ts                      # Browser configuration helper
+│       ├── cookies.ts                      # Cookie consent handler
+│       ├── extractLocatorFromPlaywrightError.ts  # Parse locator from failure text
+│       ├── SelfHealingClient.ts            # HTTP client for heal-locator API
+│       ├── attachSelfHealToReport.ts       # Failed-step JSON attach (self-heal)
+│       └── generate-report.ts              # multiple-cucumber-html-reporter driver
 ├── .vscode/                        # VS Code configuration
 │   ├── launch.json                 # Debug/run configurations
 │   └── settings.json               # Cucumber/Gherkin settings
 ├── .env                            # Environment variables
 ├── cucumber.js                     # Cucumber configuration
+├── reporting/
+│   └── patch-mchr-scenarios.cjs    # Patches HTML reporter before `npm run report`
 └── playwright.config.ts            # Playwright configuration
 ```
 
@@ -238,11 +247,27 @@ export class LoginPage {
   - Browser initialization
   - Navigation to base URL
   - Cookie acceptance
-  - Screenshots on failure
+  - On failed steps: screenshot, optional self-heal JSON attachment (`attachSelfHealToReport`), trace zip on failed scenarios
 
 #### 6. **Utilities** (`src/utils/`)
 - **browser.ts**: Browser configuration and context creation
 - **cookies.ts**: Automatic cookie consent handling
+
+#### 7. **Reporting & self-heal** (`src/utils/`)
+
+These modules support the HTML report and optional **heal-on-failure** diagnostics. Environment variables for the heal service live in **`.env.example`** (`HEAL_API_URL`, `HEAL_THRESHOLD`, `HEAL_ON_FAILURE`).
+
+**`extractLocatorFromPlaywrightError.ts`**  
+Exports `extractLocatorFromPlaywrightError(message)`. Uses regexes to pull the selector string from Playwright-style failure text (for example `locator('...')` / `` locator(`...`) ``). Returns `null` if nothing matches (custom errors or non-Playwright messages). Used by `attachSelfHealToReport` so the heal API knows which locator broke.
+
+**`SelfHealingClient.ts`**  
+HTTP client for a self-healing service compatible with **`POST {baseUrl}/api/v1/heal-locator`**. Defaults: `HEAL_API_URL` (fallback `http://localhost:8787`), `HEAL_THRESHOLD` (fallback `0.4`). Sends `failed_element`, `threshold`, and a **gzip + base64** DOM snapshot (`page.content()`). Exports `parseHealLocatorResponse`, `getHealedXpath`, and types `HealLocatorResponse` / `HealedElement`. Throws if the JSON shape is wrong or status is not `"success"`. `healFromPage(failedElement, page)` gathers HTML and calls `heal`.
+
+**`attachSelfHealToReport.ts`**  
+Exports `attachSelfHealToReport(attach, page, failureMessage)`. Intended from **`AfterStep`** on `Status.FAILED`. If `HEAL_ON_FAILURE` is not `"false"`, extracts a locator via `extractLocatorFromPlaywrightError`, calls `SelfHealingClient.healFromPage`, and **`attach`**es a JSON payload (`failedLocator` + `heal`, or `healError`, or a small `skipped` object with `reason`). Uses `application/json` so the Cucumber HTML report shows **+ Show Info**. Never rethrows so failures in healing do not mask the original step failure.
+
+**`generate-report.ts`**  
+Script run by **`npm run report`** (after `reporting/patch-mchr-scenarios.cjs`). Waits until Cucumber JSON exists (poll under **`CUCUMBER_HTML_REPORT_WAIT_MS`**, default **1500ms** when invoked manually), normalizes **`test-results/cucumber/cucumber-report.json`** (including legacy **`test-results/cucumber-report.json`** or cwd variants), then calls **multiple-cucumber-html-reporter** with `jsonDir: test-results/cucumber` so trace `*.json` files under `test-results/` are not scanned. Writes **`test-results/cucumber-html-report/`**. See **Test Reports** for auto-generation after runs.
 
 ## How It Works
 
@@ -375,6 +400,16 @@ VIEWPORT_HEIGHT=1080
 
 `BASE_URL` is read from `.env` (and from VS Code `launch.json` via `envFile`). It overrides the fallback in `playwright.config.ts`. If tests open the wrong site, check **`.env`** first.
 
+Optional variables (see **`.env.example`**):
+
+| Variable | Purpose |
+|----------|---------|
+| `HEAL_API_URL` | Base URL of the heal-locator service (`SelfHealingClient`) |
+| `HEAL_THRESHOLD` | Default score threshold sent to the API |
+| `HEAL_ON_FAILURE` | Set to `false` to skip self-heal JSON attachments on failed steps |
+| `CUCUMBER_HTML_REPORT_WAIT_MS` | If set, used as the max wait (ms) for Cucumber JSON in **both** the post-run hook and `generate-report`. If unset, the hook defaults to **30000** and `generate-report` defaults to **1500** |
+| `SKIP_AUTO_HTML_REPORT` | Set to `1` to skip the post-run `npm run report` hook |
+
 ### Key Design Decisions
 
 1. **Page Object Model**: Locators live under `src/locators/`; page objects under `src/pages/` orchestrate behavior
@@ -385,21 +420,31 @@ VIEWPORT_HEIGHT=1080
 
 ## Test Reports
 
-After running tests, generate and view the HTML report:
+When any Cucumber run finishes (including **`npx cucumber-js`** from **`.vscode/launch.json`**), `src/support/hooks.ts` waits on Node’s **`beforeExit`** event, then **polls every 200ms** (up to **`CUCUMBER_HTML_REPORT_WAIT_MS`**, default **30000**) until the Cucumber JSON exists on disk. Only then does it run **`npm run report`**, so the parent process is never blocked by `execSync` before the formatter can flush (blocking early was breaking VS Code runs). The report child env strips **`NODE_OPTIONS`** / VS Code inspector variables. The **`generate-report.ts`** step performs its own wait for the JSON file (see **Reporting & self-heal** under Framework Architecture). Set **`SKIP_AUTO_HTML_REPORT=1`** to disable auto-report (for example `npm run test:bdd:no-report`).
+
+To rebuild from the last JSON without re-running tests, or after copying a JSON file:
 
 ```bash
 npm run report
 ```
 
-This will:
+To open the report in your default browser:
+
+```bash
+npm run report:open
+```
+
+`npm run report` will:
+- Apply a small patch to `multiple-cucumber-html-reporter` so hidden steps and attachments (errors, self-heal JSON, trace zip) show correctly (see `reporting/patch-mchr-scenarios.cjs`; re-runs after `npm install` are safe).
 - Generate an HTML report from the Cucumber JSON report
-- Automatically open it in your default browser
 - Show test results, scenarios, step details, and execution times
+
+On failed steps, use **+ Show Error**, **+ Show Info** (JSON, including self-heal), **+ Screenshot**, and **Attachment** links on the failed step row. The **After** row contains the Playwright trace zip.
 
 **Report Location**: `test-results/cucumber-html-report/index.html`
 
 **Other Artifacts**:
-- **Cucumber JSON Report**: `test-results/cucumber-report.json`
+- **Cucumber JSON Report**: `test-results/cucumber/cucumber-report.json` (isolated from other `test-results/*.json` so the HTML reporter does not mis-parse Playwright trace JSON)
 - **Screenshots**: Auto-captured on failure in `test-results/`
 - **Traces**: Available for debugging failed tests in `test-results/`
 
