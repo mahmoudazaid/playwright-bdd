@@ -9,7 +9,7 @@ export class LoginPage {
   }
 
   async assertLoginFormVisible(): Promise<void> {
-    const visible = { state: 'visible' as const, timeout: 3_000 };
+    const visible = { state: 'visible' as const, timeout: 500 };
     await this.locators.usernameInput.waitFor(visible);
     await this.locators.passwordInput.waitFor(visible);
     await this.locators.loginButton.waitFor(visible);
