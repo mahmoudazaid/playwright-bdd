@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { IWorld } from '@cucumber/cucumber';
-import { attachSelfHealToReport } from './attachSelfHealToReport';
+import { attachSelfHealToReport, healLocatorRetryEnabled } from './attachSelfHealToReport';
 
 type AttachFn = IWorld['attach'];
 
@@ -11,6 +11,8 @@ export interface HealRetryRegistry {
 /**
  * Run an action once; on failure, call heal-locator, store XPath on the registry, then run again once.
  * Cucumber AfterStep runs too late to retry — use this around UI actions that should self-heal.
+ *
+ * When HEAL_LOCATOR_RETRY is false: fail immediately (no heal-and-retry). AfterStep still attaches heal JSON.
  */
 export async function withHealRetry<T>(
   attach: AttachFn,
@@ -18,6 +20,9 @@ export async function withHealRetry<T>(
   registry: HealRetryRegistry,
   fn: () => Promise<T>
 ): Promise<T> {
+  if (!healLocatorRetryEnabled()) {
+    return await fn();
+  }
   try {
     return await fn();
   } catch (firstError) {

@@ -5,7 +5,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { CustomWorld } from './world';
 import { acceptCookies } from '../utils/cookies';
-import { attachSelfHealToReport } from '../utils/attachSelfHealToReport';
+import { attachSelfHealToReport, healLocatorRetryEnabled } from '../utils/attachSelfHealToReport';
 
 function envForReportChild(): NodeJS.ProcessEnv {
   const env = { ...process.env };
@@ -125,9 +125,16 @@ AfterStep(async function (this: CustomWorld, { result }) {
     // ignore
   }
 
-  await attachSelfHealToReport(this.attach.bind(this), this.page, message, (failedLocator, healedXpath) => {
-    this.healedSelectors.set(failedLocator, healedXpath);
-  });
+  await attachSelfHealToReport(
+    this.attach.bind(this),
+    this.page,
+    message,
+    healLocatorRetryEnabled()
+      ? (failedLocator, healedXpath) => {
+          this.healedSelectors.set(failedLocator, healedXpath);
+        }
+      : undefined
+  );
 });
 
 After(async function (this: CustomWorld, scenario) {

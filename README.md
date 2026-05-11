@@ -255,7 +255,7 @@ export class LoginPage {
 
 #### 7. **Reporting & self-heal** (`src/utils/`)
 
-These modules support the HTML report and optional **heal-on-failure** diagnostics. Environment variables for the heal service live in **`.env.example`** (`HEAL_API_URL`, `HEAL_THRESHOLD`, `HEAL_ON_FAILURE`).
+These modules support the HTML report and optional **heal-on-failure** diagnostics. Environment variables for the heal service live in **`.env.example`** (`HEAL_API_URL`, `HEAL_THRESHOLD`, `HEAL_ON_FAILURE`, `HEAL_LOCATOR_RETRY`).
 
 **`extractLocatorFromPlaywrightError.ts`**  
 Exports `extractLocatorFromPlaywrightError(message)`. Uses regexes to pull the selector string from Playwright-style failure text (for example `locator('...')` / `` locator(`...`) ``). Returns `null` if nothing matches (custom errors or non-Playwright messages). Used by `attachSelfHealToReport` so the heal API knows which locator broke.
@@ -264,14 +264,17 @@ Exports `extractLocatorFromPlaywrightError(message)`. Uses regexes to pull the s
 HTTP client for a self-healing service compatible with **`POST {baseUrl}/api/v1/heal-locator`**. Defaults: `HEAL_API_URL` (fallback `http://localhost:8787`), `HEAL_THRESHOLD` (fallback `0.4`). Sends `failed_element`, `threshold`, and a **gzip + base64** DOM snapshot (`page.content()`). Exports `parseHealLocatorResponse`, `getHealedXpath`, and types `HealLocatorResponse` / `HealedElement`. Throws if the JSON shape is wrong or status is not `"success"`. `healFromPage(failedElement, page)` gathers HTML and calls `heal`.
 
 **`attachSelfHealToReport.ts`**  
-Exports `attachSelfHealToReport(attach, page, failureMessage)`. Intended from **`AfterStep`** on `Status.FAILED`. If `HEAL_ON_FAILURE` is not `"false"`, extracts a locator via `extractLocatorFromPlaywrightError`, calls `SelfHealingClient.healFromPage`, and **`attach`**es a JSON payload (`failedLocator` + `heal`, or `healError`, or a small `skipped` object with `reason`). Uses `application/json` so the Cucumber HTML report shows **+ Show Info**. Never rethrows so failures in healing do not mask the original step failure.
+Exports `attachSelfHealToReport(attach, page, failureMessage, onSuccessfulHeal?)` and **`healLocatorRetryEnabled()`**. Intended from **`AfterStep`** on `Status.FAILED`. If `HEAL_ON_FAILURE` is not `"false"`, extracts a locator via `extractLocatorFromPlaywrightError`, calls `SelfHealingClient.healFromPage`, and **`attach`**es a JSON payload (`failedLocator` + `heal`, or `healError`, or a small `skipped` object with `reason`). Payloads include **`healLocatorRetryEnabled`** so the report shows whether a second attempt with the healed XPath was allowed. Uses `application/json` so the Cucumber HTML report shows **+ Show Info**. Never rethrows so failures in healing do not mask the original step failure. When **`HEAL_LOCATOR_RETRY`** is false, **`onSuccessfulHeal`** is omitted so healed XPaths are not applied to `CustomWorld.healedSelectors` after the step already failed.
+
+**`withHealRetry.ts`**  
+Wraps login (and similar) actions: when **`healLocatorRetryEnabled()`** is true, on first failure runs the same heal attach path, registers the healed XPath on the world, and retries the block once. When false, the block runs once only (fail fast); **`AfterStep`** still attaches heal diagnostics when **`HEAL_ON_FAILURE`** is enabled.
 
 **`generate-report.ts`**  
 Script run by **`npm run report`** (after `reporting/patch-mchr-scenarios.cjs`). Waits until Cucumber JSON exists (poll under **`CUCUMBER_HTML_REPORT_WAIT_MS`**, default **1500ms** when invoked manually), normalizes **`test-results/cucumber/cucumber-report.json`** (including legacy **`test-results/cucumber-report.json`** or cwd variants), then calls **multiple-cucumber-html-reporter** with `jsonDir: test-results/cucumber` so trace `*.json` files under `test-results/` are not scanned. Writes **`test-results/cucumber-html-report/`**. See **Test Reports** for auto-generation after runs.
 
 ##### How heal-on-failure works (step-by-step)
 
-Healing is **diagnostic and report-oriented**: it does **not** change your locators or retry the step automatically. It suggests a candidate element (for example a healed XPath) so you can fix selectors or investigate flakiness.
+Healing is **diagnostic and report-oriented** by default in **`AfterStep`**: it attaches a candidate element (for example a healed XPath). Optional **locator retry** (`HEAL_LOCATOR_RETRY`, **`withHealRetry`**) can re-run a failed step once using that XPath before the scenario ends.
 
 ```mermaid
 flowchart TD
@@ -321,7 +324,7 @@ flowchart TD
 
 6. **HTML report**: regenerate with **`npm run report`** (or rely on the post-run hook). On the failed step row, open **+ Show Info** to inspect the self-heal JSON; use **+ Show Error** for the Playwright stack trace; **+ Screenshot** for the capture. The heal output is a **hint**—update **`src/locators/`** (or similar) yourself if you adopt a new selector.
 
-**Operational checklist**: run a service that implements **`POST /api/v1/heal-locator`** (same contract as `SelfHealingClient`), set **`HEAL_API_URL`** if it is not on `localhost:8787`, and keep **`HEAL_ON_FAILURE=true`** unless you want to turn attachments off.
+**Operational checklist**: run a service that implements **`POST /api/v1/heal-locator`** (same contract as `SelfHealingClient`), set **`HEAL_API_URL`** if it is not on `localhost:8787`, and keep **`HEAL_ON_FAILURE=true`** unless you want to turn attachments off. Set **`HEAL_LOCATOR_RETRY=false`** to fail fast without re-running steps with a healed locator (JSON attachments still record **`healLocatorRetryEnabled`**).
 
 ## How It Works
 
@@ -461,6 +464,7 @@ Optional variables (see **`.env.example`**):
 | `HEAL_API_URL` | Base URL of the heal-locator service (`SelfHealingClient`) |
 | `HEAL_THRESHOLD` | Default score threshold sent to the API |
 | `HEAL_ON_FAILURE` | Set to `false` to skip self-heal JSON attachments on failed steps |
+| `HEAL_LOCATOR_RETRY` | Set to `false` for fail-fast (no heal-and-retry in `withHealRetry`); unset mirrors `HEAL_ON_FAILURE` |
 | `CUCUMBER_HTML_REPORT_WAIT_MS` | If set, used as the max wait (ms) for Cucumber JSON in **both** the post-run hook and `generate-report`. If unset, the hook defaults to **30000** and `generate-report` defaults to **1500** |
 | `SKIP_AUTO_HTML_REPORT` | Set to `1` to skip the post-run `npm run report` hook |
 
