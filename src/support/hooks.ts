@@ -125,7 +125,9 @@ AfterStep(async function (this: CustomWorld, { result }) {
     // ignore
   }
 
-  await attachSelfHealToReport(this.attach.bind(this), this.page, message);
+  await attachSelfHealToReport(this.attach.bind(this), this.page, message, (failedLocator, healedXpath) => {
+    this.healedSelectors.set(failedLocator, healedXpath);
+  });
 });
 
 After(async function (this: CustomWorld, scenario) {

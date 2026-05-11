@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { IWorld } from '@cucumber/cucumber';
-import { SelfHealingClient } from './SelfHealingClient';
+import { SelfHealingClient, getHealedXpath } from './SelfHealingClient';
 import { extractLocatorFromPlaywrightError } from './extractLocatorFromPlaywrightError';
 
 type AttachFn = IWorld['attach'];
@@ -21,7 +21,9 @@ async function safeAttach(attach: AttachFn, payload: unknown): Promise<void> {
 export async function attachSelfHealToReport(
   attach: AttachFn,
   page: Page | undefined,
-  failureMessage: string
+  failureMessage: string,
+  /** When healing succeeds, invoked so locators can retry with the XPath (e.g. CustomWorld.healedSelectors). */
+  onSuccessfulHeal?: (failedLocator: string, healedXpath: string) => void
 ): Promise<void> {
   try {
     if (!healOnFailureEnabled()) {
@@ -47,6 +49,13 @@ export async function attachSelfHealToReport(
     try {
       const client = new SelfHealingClient();
       const heal = await client.healFromPage(failedLocator, page);
+      if (onSuccessfulHeal) {
+        try {
+          onSuccessfulHeal(failedLocator, getHealedXpath(heal));
+        } catch {
+          // ignore callback errors
+        }
+      }
       await safeAttach(attach, { failedLocator, heal });
     } catch (healError) {
       await safeAttach(attach, {

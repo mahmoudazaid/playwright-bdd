@@ -2,19 +2,26 @@ import { Given, When, Then } from '@cucumber/cucumber';
 import { expect } from '@playwright/test';
 import { CustomWorld } from '../support/world';
 import { LoginPage } from '../pages/LoginPage';
+import { withHealRetry } from '../utils/withHealRetry';
 
 let loginPage: LoginPage;
 
 Given('I am on the login page', async function (this: CustomWorld) {
-  loginPage = new LoginPage(this.page);
-  await loginPage.assertLoginFormVisible();
+  const attach = this.attach.bind(this);
+  await withHealRetry(attach, this.page, this, async () => {
+    loginPage = new LoginPage(this.page, this.healedSelectors);
+    await loginPage.assertLoginFormVisible();
+  });
 });
 
 When(
   'I log in as {string} with password {string}',
   async function (this: CustomWorld, username: string, password: string) {
-    loginPage = new LoginPage(this.page);
-    await loginPage.login(username, password);
+    const attach = this.attach.bind(this);
+    await withHealRetry(attach, this.page, this, async () => {
+      loginPage = new LoginPage(this.page, this.healedSelectors);
+      await loginPage.login(username, password);
+    });
   }
 );
 

@@ -4,8 +4,8 @@ import { LoginLocators } from '../locators/LoginLocators';
 export class LoginPage {
   private readonly locators: LoginLocators;
 
-  constructor(page: Page) {
-    this.locators = new LoginLocators(page);
+  constructor(page: Page, healedSelectors?: ReadonlyMap<string, string>) {
+    this.locators = new LoginLocators(page, healedSelectors);
   }
 
   async assertLoginFormVisible(): Promise<void> {

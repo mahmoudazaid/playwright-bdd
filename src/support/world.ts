@@ -11,6 +11,8 @@ export class CustomWorld extends World {
   browser!: Browser;
   context!: BrowserContext;
   page!: Page;
+  /** Failed selector string (as in Playwright errors) → healed XPath from the heal service */
+  readonly healedSelectors = new Map<string, string>();
   private browserConfig = getBrowserConfig();
 
   async initBrowser() {
