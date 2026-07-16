@@ -34,23 +34,27 @@ cp .env.example .env
 ### Running Tests
 
 ```bash
-# Run all tests (HTML report is generated automatically when the run finishes)
+# Generate Playwright tests from features, then run (Playwright manages browser lifecycle)
 npm run test:bdd
 
-# Run smoke tests only (report also generated afterward)
+# Smoke tag only
 npm run test:bdd:smoke
 
-# Run tests in headed mode (see browser; report generated afterward)
+# Headed browser
 npm run test:bdd:headed
 
-# Cucumber only, skip HTML report (sets SKIP_AUTO_HTML_REPORT=1; faster iteration)
-npm run test:bdd:no-report
+# Run tests + build Cucumber HTML from JSON reporter output
+npm run test:bdd:with-report
 
-# Regenerate report from the last JSON without re-running tests
+# Regenerate Cucumber HTML from last JSON without re-running tests
 npm run report
-# Or generate and open the HTML file in the browser
 npm run report:open
+
+# Playwright HTML report (trace/video/screenshot on failure)
+npx playwright show-report test-results/playwright-report
 ```
+
+Tests use **[playwright-bdd](https://github.com/vitalets/playwright-bdd)**: `bddgen` writes `.features-gen/`, then `playwright test` runs them with Playwright fixtures (`page`, trace, video). Browser launch/teardown is **not** manual in hooks anymore.
 
 ## VS Code Setup (Optional)
 
@@ -331,8 +335,8 @@ flowchart TD
 1. **Feature File** defines test scenario in plain English
 2. **Step Definitions** map Gherkin steps to code
 3. **Locators** define selectors; **Page Objects** contain reusable interactions
-4. **Hooks** handle setup/teardown (browser, navigation, cookies)
-5. **World** provides shared context (page, browser) to all steps
+4. **Hooks** (`playwright-bdd` `Before` / `AfterStep`) handle navigation, cookies, self-heal attachments
+5. **`fixtures.ts`** extends Playwright `test` with a **`world`** fixture (`page`, `healedSelectors`, `attach`)
 
 ### Test Execution Flow
 
@@ -478,7 +482,7 @@ Optional variables (see **`.env.example`**):
 
 ## Test Reports
 
-When any Cucumber run finishes (including **`npx cucumber-js`** from **`.vscode/launch.json`**), `src/support/hooks.ts` waits on Node’s **`beforeExit`** event, then **polls every 200ms** (up to **`CUCUMBER_HTML_REPORT_WAIT_MS`**, default **30000**) until the Cucumber JSON exists on disk. Only then does it run **`npm run report`**, so the parent process is never blocked by `execSync` before the formatter can flush (blocking early was breaking VS Code runs). The report child env strips **`NODE_OPTIONS`** / VS Code inspector variables. The **`generate-report.ts`** step performs its own wait for the JSON file (see **Reporting & self-heal** under Framework Architecture). Set **`SKIP_AUTO_HTML_REPORT=1`** to disable auto-report (for example `npm run test:bdd:no-report`).
+**Cucumber JSON** is produced by **`cucumberReporter('json', …)`** in `playwright.config.ts` when **`playwright test`** finishes. Run **`npm run test:bdd:with-report`** or **`npm run report`** to build the HTML report via **`multiple-cucumber-html-reporter`**. **Playwright’s** HTML report is under **`test-results/playwright-report`** (trace/video on failure).
 
 To rebuild from the last JSON without re-running tests, or after copying a JSON file:
 

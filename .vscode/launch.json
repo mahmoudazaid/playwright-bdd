@@ -5,28 +5,25 @@
       "type": "node",
       "request": "launch",
       "name": "Run Tests",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": [
-        "cucumber-js",
-        "-c",
-        "cucumber.js",
-        "--tags",
-        "${input:tagName}"
-      ],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "test:bdd:smoke"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run All BDD Tests",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "test:bdd"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "internalConsoleOptions": "neverOpen",
       "skipFiles": ["<node_internals>/**"],
       "envFile": "${workspaceFolder}/.env"
     }
-  ],
-  "inputs": [
-    {
-      "id": "tagName",
-      "type": "promptString",
-      "description": "Enter tag (e.g., @smoke, @regression, or leave empty for all)",
-      "default": ""
-    }
   ]
 }
-

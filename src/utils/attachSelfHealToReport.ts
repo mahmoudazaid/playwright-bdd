@@ -1,9 +1,11 @@
 import type { Page } from '@playwright/test';
-import type { IWorld } from '@cucumber/cucumber';
 import { SelfHealingClient, getHealedXpath } from './SelfHealingClient';
 import { extractLocatorFromPlaywrightError } from './extractLocatorFromPlaywrightError';
 
-type AttachFn = IWorld['attach'];
+export type AttachFn = (
+  data: string | Buffer,
+  mediaTypeOrOptions?: string | { mediaType?: string; fileName?: string }
+) => void | Promise<void>;
 
 function healOnFailureEnabled(): boolean {
   return process.env.HEAL_ON_FAILURE !== 'false';

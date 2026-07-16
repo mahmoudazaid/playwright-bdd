@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.features-gen/
 test-results/
 *.log
 .env

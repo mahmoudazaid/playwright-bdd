@@ -11,7 +11,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "moduleResolution": "node",
-    "types": ["node", "@cucumber/cucumber", "@playwright/test"]
+    "types": ["node", "@playwright/test"]
   },
   "include": ["features/**/*", "src/**/*"],
   "exclude": ["node_modules", "dist", "test-results"]

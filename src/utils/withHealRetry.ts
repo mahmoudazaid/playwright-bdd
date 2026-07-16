@@ -1,8 +1,9 @@
 import type { Page } from '@playwright/test';
-import type { IWorld } from '@cucumber/cucumber';
-import { attachSelfHealToReport, healLocatorRetryEnabled } from './attachSelfHealToReport';
-
-type AttachFn = IWorld['attach'];
+import {
+  attachSelfHealToReport,
+  healLocatorRetryEnabled,
+  type AttachFn,
+} from './attachSelfHealToReport';
 
 export interface HealRetryRegistry {
   healedSelectors: Map<string, string>;
